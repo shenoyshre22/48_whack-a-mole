@@ -218,7 +218,7 @@ class GameEngine:
             final_score = self.font.render(f"FINAL SCORE: {self.score}", True, WHITE)
             screen.blit(final_score, final_score.get_rect(center=(self.width // 2, self.height // 2 - 5)))
 
-            prompt = self.button_font.render("CHOOSE DIFFICULTY", True, WHITE)
+            prompt = self.button_font.render("RETRY? CHOOSE DIFFICULTY", True, WHITE)
             screen.blit(prompt, prompt.get_rect(center=(self.width // 2, self.height // 2 + 38)))
 
             mouse_position = pygame.mouse.get_pos()
