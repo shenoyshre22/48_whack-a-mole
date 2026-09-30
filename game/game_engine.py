@@ -11,6 +11,7 @@ WHITE = (255, 255, 255)
 GAME_OVER_RED = (150, 35, 35)
 BUTTON_GREEN = (45, 110, 65)
 BUTTON_RED = (125, 45, 45)
+BUTTON_BLUE = (45, 85, 135)
 BUTTON_HOVER = (220, 190, 80)
 
 class GameEngine:
@@ -29,6 +30,13 @@ class GameEngine:
 
         self.spawn_chance = 0.02   # per-hole, per-frame chance to pop up
         self.mole_up_frames = 45   # how long a mole stays up if not whacked
+        self.difficulty_profiles = {
+            "Easy": {"max_moles": 2, "speed": 1, "spawn_chance": 0.02},
+            "Medium": {"max_moles": 4, "speed": 2, "spawn_chance": 0.035},
+            "Hard": {"max_moles": 7, "speed": 3, "spawn_chance": 0.05},
+        }
+        self.difficulty = "Easy"
+        self.max_moles = 2
 
         self.round_seconds = 30
         self.time_left_frames = self.round_seconds * 60
@@ -43,21 +51,39 @@ class GameEngine:
         self.button_font = pygame.font.SysFont("Arial", 24, bold=True)
         self.game_over = False
         self.exit_requested = False
-        self.retry_button = pygame.Rect(width // 2 - 145, height // 2 + 55, 125, 52)
-        self.exit_button = pygame.Rect(width // 2 + 20, height // 2 + 55, 125, 52)
+        button_y = height // 2 + 55
+        self.difficulty_buttons = {
+            "Easy": pygame.Rect(20, button_y, 145, 52),
+            "Medium": pygame.Rect(177, button_y, 145, 52),
+            "Hard": pygame.Rect(334, button_y, 145, 52),
+        }
+        self.exit_button = pygame.Rect(width // 2 - 75, button_y + 65, 150, 48)
+
+        self._set_difficulty(self.difficulty)
 
     def handle_event(self, event):
         if self.game_over:
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if self.retry_button.collidepoint(event.pos):
-                    self.reset()
-                elif self.exit_button.collidepoint(event.pos):
+                for difficulty, button in self.difficulty_buttons.items():
+                    if button.collidepoint(event.pos):
+                        self.reset(difficulty)
+                        return
+                if self.exit_button.collidepoint(event.pos):
                     self.exit_requested = True
             return
         if event.type == pygame.MOUSEBUTTONDOWN:
             self._handle_click(event.pos)
 
-    def reset(self):
+    def _set_difficulty(self, difficulty):
+        profile = self.difficulty_profiles[difficulty]
+        self.difficulty = difficulty
+        self.max_moles = profile["max_moles"]
+        self.spawn_chance = profile["spawn_chance"]
+        self.mole_up_frames = 45 // profile["speed"]
+
+    def reset(self, difficulty=None):
+        if difficulty is not None:
+            self._set_difficulty(difficulty)
         self.score = 0
         self.misses = 0
         self.time_left_frames = self.round_seconds * 60
@@ -102,8 +128,15 @@ class GameEngine:
 
         for hole in self.holes:
             hole.update()
-            if not hole.active and random.random() < self.spawn_chance:
+        active_moles = sum(hole.active for hole in self.holes)
+        for hole in self.holes:
+            if (
+                active_moles < self.max_moles
+                and not hole.active
+                and random.random() < self.spawn_chance
+            ):
                 hole.pop_up(self.mole_up_frames)
+                active_moles += 1
 
     def render(self, screen):
         for hole in self.holes:
@@ -133,19 +166,25 @@ class GameEngine:
             final_score = self.font.render(f"FINAL SCORE: {self.score}", True, WHITE)
             screen.blit(final_score, final_score.get_rect(center=(self.width // 2, self.height // 2 - 5)))
 
+            prompt = self.button_font.render("CHOOSE DIFFICULTY", True, WHITE)
+            screen.blit(prompt, prompt.get_rect(center=(self.width // 2, self.height // 2 + 38)))
+
             mouse_position = pygame.mouse.get_pos()
-            self._draw_button(screen, self.retry_button, "RETRY?", BUTTON_GREEN, mouse_position, retry=True)
+            button_colors = {"Easy": BUTTON_GREEN, "Medium": BUTTON_BLUE, "Hard": GAME_OVER_RED}
+            for difficulty, button in self.difficulty_buttons.items():
+                self._draw_button(
+                    screen,
+                    button,
+                    difficulty,
+                    button_colors[difficulty],
+                    mouse_position,
+                )
             self._draw_button(screen, self.exit_button, "END GAME", BUTTON_RED, mouse_position)
 
-    def _draw_button(self, screen, button, label, color, mouse_position, retry=False):
+    def _draw_button(self, screen, button, label, color, mouse_position):
         button_color = BUTTON_HOVER if button.collidepoint(mouse_position) else color
         pygame.draw.rect(screen, button_color, button)
         pygame.draw.rect(screen, WHITE, button, 2)
         text = self.button_font.render(label, True, WHITE)
         text_rect = text.get_rect(center=button.center)
-        if retry:
-            icon_center = (button.left + 24, button.centery)
-            pygame.draw.arc(screen, WHITE, (icon_center[0] - 10, icon_center[1] - 10, 20, 20), 0.4, 5.5, 3)
-            pygame.draw.polygon(screen, WHITE, [(icon_center[0] - 10, icon_center[1] - 7), (icon_center[0] - 2, icon_center[1] - 11), (icon_center[0] - 3, icon_center[1] - 3)])
-            text_rect.centerx += 10
         screen.blit(text, text_rect)
