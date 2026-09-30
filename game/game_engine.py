@@ -1,5 +1,10 @@
-import pygame
+import io
+import math
 import random
+import struct
+import wave
+
+import pygame
 from .hole import Hole
 
 # Game Engine
@@ -51,6 +56,7 @@ class GameEngine:
         self.button_font = pygame.font.SysFont("Arial", 24, bold=True)
         self.game_over = False
         self.exit_requested = False
+        self.sounds = self._create_sounds()
         button_y = height // 2 + 55
         self.difficulty_buttons = {
             "Easy": pygame.Rect(20, button_y, 145, 52),
@@ -60,6 +66,49 @@ class GameEngine:
         self.exit_button = pygame.Rect(width // 2 - 75, button_y + 65, 150, 48)
 
         self._set_difficulty(self.difficulty)
+
+    def _create_sounds(self):
+        """Create small effects in memory so missing audio files cannot break the game."""
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            return {
+                "hit": self._make_sound(((660, 0.07), (990, 0.09))),
+                "miss": self._make_sound(((180, 0.16), (110, 0.12))),
+                "game_over": self._make_sound(((440, 0.16), (330, 0.18), (220, 0.24))),
+            }
+        except (pygame.error, OSError):
+            return {}
+
+    @staticmethod
+    def _make_sound(notes):
+        sample_rate = 44100
+        samples = bytearray()
+        for frequency, duration in notes:
+            sample_count = int(sample_rate * duration)
+            for sample_index in range(sample_count):
+                envelope = 1 - (sample_index / sample_count)
+                value = int(32767 * 0.25 * envelope * math.sin(
+                    2 * math.pi * frequency * sample_index / sample_rate
+                ))
+                samples.extend(struct.pack("<h", value))
+
+        audio_file = io.BytesIO()
+        with wave.open(audio_file, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(samples)
+        audio_file.seek(0)
+        return pygame.mixer.Sound(file=audio_file)
+
+    def _play_sound(self, name):
+        sound = self.sounds.get(name)
+        if sound is not None:
+            try:
+                sound.play()
+            except pygame.error:
+                pass
 
     def handle_event(self, event):
         if self.game_over:
@@ -109,8 +158,10 @@ class GameEngine:
             )
             clicked_hole.whack()
             self.score += 1
+            self._play_sound("hit")
         else:
             self.misses += 1
+            self._play_sound("miss")
 
     def handle_input(self):
         # Reserved for continuously-held-key input; this game is
@@ -124,6 +175,7 @@ class GameEngine:
         self.time_left_frames -= 1
         if self.time_left_frames <= 0:
             self.game_over = True
+            self._play_sound("game_over")
             return
 
         for hole in self.holes:
